@@ -15,7 +15,7 @@
     "qa": "npm run lint && npm run typecheck && npm run test && npm run build && npm audit --omit=dev --audit-level=moderate",
     "qa:full": "npm run qa && npm run test:e2e && npm run db:test",
     "demo:credentials": "tsx scripts/demo-credentials.ts",
-    "create-superadmin": "tsx scripts/create-superadmin.ts",
+    "create-superadmin": "tsx scripts/create-superadmin.mts",
     "jobs": "tsx scripts/run-jobs.ts",
     "db:start": "npx supabase start",
     "db:reset": "npx supabase db reset",

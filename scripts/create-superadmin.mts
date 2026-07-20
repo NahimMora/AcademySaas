@@ -17,13 +17,22 @@ const { data: created, error: createError } = await admin.auth.admin.createUser(
   password,
   email_confirm: true
 });
-if (createError) throw createError;
-const userId = created.user.id;
+let userId: string;
+if (createError) {
+  if (createError.code !== "email_exists") throw createError;
+  const { data: list, error: listError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  if (listError) throw listError;
+  const existing = list.users.find((u) => u.email === email);
+  if (!existing) throw new Error("email_exists pero no se encontró en listUsers");
+  userId = existing.id;
+} else {
+  userId = created.user.id;
+}
 
-const { error: profileError } = await admin.from("profiles").insert({ id: userId, full_name: fullName });
+const { error: profileError } = await admin.from("profiles").upsert({ id: userId, full_name: fullName });
 if (profileError) throw profileError;
 
-const { error: adminError } = await admin.from("platform_admins").insert({ user_id: userId });
+const { error: adminError } = await admin.from("platform_admins").upsert({ user_id: userId });
 if (adminError) throw adminError;
 
 console.log(`Superadmin creado: ${email} (${userId})`);
