@@ -10,7 +10,9 @@ import type { StudentListItemDTO } from "@/lib/students/types";
 const listQuerySchema = z.object({
   academyId: uuidSchema,
   status: z.enum(["all", "active", "inactive", "blocked", "archived"]).default("all"),
-  q: z.string().max(80).optional()
+  q: z.string().max(80).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25)
 });
 
 const guardianSchema = z.object({
@@ -64,8 +66,11 @@ export async function GET(request: Request) {
       const term = parsed.data.q.replace(/[%,]/g, "").trim();
       if (term) query = query.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,dni_normalized.ilike.%${term}%,public_code.ilike.%${term}%`);
     }
-    const { data, error } = await query.order("last_name").limit(200);
+    const from = (parsed.data.page - 1) * parsed.data.pageSize;
+    const { data: pageRows, error } = await query.order("last_name").range(from, from + parsed.data.pageSize);
     if (error) return NextResponse.json({ error: "No se pudieron cargar los alumnos" }, { status: 500 });
+    const hasMore = (pageRows ?? []).length > parsed.data.pageSize;
+    const data = (pageRows ?? []).slice(0, parsed.data.pageSize);
 
     const studentIds = (data ?? []).map((row) => row.id);
     const { data: guardianRows } = studentIds.length
@@ -85,7 +90,7 @@ export async function GET(request: Request) {
       createdAt: row.created_at,
       hasGuardian: withGuardian.has(row.id)
     }));
-    return NextResponse.json({ students, total: students.length });
+    return NextResponse.json({ students, hasMore });
   } catch { return NextResponse.json({ error: "El servicio de datos no está disponible." }, { status: 503 }); }
 }
 

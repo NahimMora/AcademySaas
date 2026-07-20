@@ -3741,6 +3741,15 @@ export type Database = {
         Args: { p_table: string; p_workspace_id: string }
         Returns: boolean
       }
+      charges_summary: {
+        Args: {
+          p_academy_id: string
+          p_status?: string
+          p_student_ids?: string[]
+          p_workspace_id: string
+        }
+        Returns: Json
+      }
       close_attendance: {
         Args: { p_class_session_id: string }
         Returns: undefined

@@ -3,9 +3,17 @@ import { z } from "zod";
 import { readSession } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validation";
+import { resolveMatchingStudentIds } from "@/lib/students/search";
 import type { PaymentRowDTO } from "@/lib/students/types";
 
-const querySchema = z.object({ academyId: uuidSchema });
+const querySchema = z.object({
+  academyId: uuidSchema,
+  status: z.enum(["all", "pending_validation", "confirmed", "rejected", "reversed", "refunded"]).default("all"),
+  q: z.string().max(80).optional(),
+  unassigned: z.coerce.boolean().default(false),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25)
+});
 
 export async function GET(request: Request) {
   const user = await readSession();
@@ -14,13 +22,23 @@ export async function GET(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Academia inválida" }, { status: 400 });
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: paymentRows, error } = await supabase.from("payments")
-      .select("id,reference,amount_cents,method,status,registered_at,student_id")
-      .eq("workspace_id", user.workspaceId)
-      .eq("academy_id", parsed.data.academyId)
-      .order("registered_at", { ascending: false })
-      .limit(200);
+
+    const matchingStudentIds = await resolveMatchingStudentIds(supabase, user.workspaceId, parsed.data.academyId, parsed.data.q);
+    if (matchingStudentIds?.length === 0) return NextResponse.json({ payments: [], hasMore: false });
+
+    // Anti-join: "sin asignar" = pagos sin fila en payment_allocations (left join + filtro por null).
+    let query = parsed.data.unassigned
+      ? supabase.from("payments").select("id,reference,amount_cents,method,status,registered_at,student_id,payment_allocations!left(payment_id)").is("payment_allocations.payment_id", null)
+      : supabase.from("payments").select("id,reference,amount_cents,method,status,registered_at,student_id");
+    query = query.eq("workspace_id", user.workspaceId).eq("academy_id", parsed.data.academyId);
+    if (parsed.data.status !== "all") query = query.eq("status", parsed.data.status);
+    if (matchingStudentIds) query = query.in("student_id", matchingStudentIds);
+
+    const from = (parsed.data.page - 1) * parsed.data.pageSize;
+    const { data: pageRows, error } = await query.order("registered_at", { ascending: false }).range(from, from + parsed.data.pageSize);
     if (error) return NextResponse.json({ error: "No se pudieron cargar los pagos" }, { status: 500 });
+    const hasMore = (pageRows ?? []).length > parsed.data.pageSize;
+    const paymentRows = (pageRows ?? []).slice(0, parsed.data.pageSize);
 
     const studentIds = Array.from(new Set((paymentRows ?? []).map((row) => row.student_id)));
     const { data: studentRows } = studentIds.length
@@ -42,6 +60,6 @@ export async function GET(request: Request) {
         allocatedChargeId: allocatedChargeByPayment.get(row.id) ?? null
       };
     });
-    return NextResponse.json({ payments });
+    return NextResponse.json({ payments, hasMore });
   } catch { return NextResponse.json({ error: "El servicio de datos no está disponible." }, { status: 503 }); }
 }

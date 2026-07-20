@@ -4,9 +4,16 @@ import { readSession } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validation";
 import { loadAllocationState } from "@/lib/billing/allocations";
+import { resolveMatchingStudentIds } from "@/lib/students/search";
 import type { ChargeRowDTO } from "@/lib/students/types";
 
-const querySchema = z.object({ academyId: uuidSchema });
+const querySchema = z.object({
+  academyId: uuidSchema,
+  status: z.enum(["all", "pending", "partial", "paid", "overdue", "cancelled", "waived", "under_review"]).default("all"),
+  q: z.string().max(80).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25)
+});
 
 export async function GET(request: Request) {
   const user = await readSession();
@@ -15,13 +22,22 @@ export async function GET(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Academia inválida" }, { status: 400 });
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: chargeRows, error } = await supabase.from("charges")
+
+    const matchingStudentIds = await resolveMatchingStudentIds(supabase, user.workspaceId, parsed.data.academyId, parsed.data.q);
+    if (matchingStudentIds?.length === 0) return NextResponse.json({ charges: [], hasMore: false });
+
+    let query = supabase.from("charges")
       .select("id,description,final_cents,due_date,status,student_id")
       .eq("workspace_id", user.workspaceId)
-      .eq("academy_id", parsed.data.academyId)
-      .order("due_date")
-      .limit(200);
+      .eq("academy_id", parsed.data.academyId);
+    if (parsed.data.status !== "all") query = query.eq("status", parsed.data.status);
+    if (matchingStudentIds) query = query.in("student_id", matchingStudentIds);
+
+    const from = (parsed.data.page - 1) * parsed.data.pageSize;
+    const { data: pageRows, error } = await query.order("due_date").range(from, from + parsed.data.pageSize);
     if (error) return NextResponse.json({ error: "No se pudieron cargar las cuotas" }, { status: 500 });
+    const hasMore = (pageRows ?? []).length > parsed.data.pageSize;
+    const chargeRows = (pageRows ?? []).slice(0, parsed.data.pageSize);
 
     const studentIds = Array.from(new Set((chargeRows ?? []).map((row) => row.student_id)));
     const { data: studentRows } = studentIds.length
@@ -41,6 +57,6 @@ export async function GET(request: Request) {
         studentId: row.student_id, studentName: student ? `${student.last_name}, ${student.first_name}` : "", studentCode: student?.public_code ?? ""
       };
     });
-    return NextResponse.json({ charges });
+    return NextResponse.json({ charges, hasMore });
   } catch { return NextResponse.json({ error: "El servicio de datos no está disponible." }, { status: 503 }); }
 }

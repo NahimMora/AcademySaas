@@ -9,11 +9,13 @@ import { Empty, Metric, PageHeader, StatusBadge } from "@/components/app/ui";
 import { NewEnrollmentModal } from "@/components/app/new-enrollment-modal";
 import { PayChargeModal } from "@/components/app/pay-charge-modal";
 import { NewPaymentModal } from "@/components/app/new-payment-modal";
+import { usePaginatedList } from "@/components/app/hooks/use-paginated-list";
 import type { AcademyOption, ChargeRowDTO } from "@/lib/students/types";
 import type { EnrollmentRowDTO } from "@/lib/billing/types";
 
 type BillingCharge = ChargeRowDTO & { studentId: string; studentName: string; studentCode: string };
 type BillingPayment = { id: string; reference: string | null; amountCents: number; method: string; status: string; registeredAt: string; studentId: string; studentName: string; studentCode: string; allocatedChargeId: string | null };
+type ChargesSummary = { debtCents: number; overdueCount: number; pendingValidationCount: number };
 
 async function readError(response: Response, fallback: string) {
   const body = await response.json().catch(() => null);
@@ -26,14 +28,12 @@ export function BillingConsole() {
   const [academies, setAcademies] = useState<AcademyOption[] | null>(null);
   const [academyId, setAcademyId] = useState("");
   const [tab, setTab] = useState<"cargos" | "inscripciones">("cargos");
-  const [charges, setCharges] = useState<BillingCharge[] | null>(null);
-  const [payments, setPayments] = useState<BillingPayment[] | null>(null);
-  const [enrollments, setEnrollments] = useState<EnrollmentRowDTO[] | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [visible, setVisible] = useState(25);
+  const [summary, setSummary] = useState<ChargesSummary | null>(null);
   const [payCharge, setPayCharge] = useState<BillingCharge | null>(null);
   const [newPaymentOpen, setNewPaymentOpen] = useState(false);
   const [newEnrollmentOpen, setNewEnrollmentOpen] = useState(false);
@@ -56,48 +56,86 @@ export function BillingConsole() {
     })();
   }, []);
 
-  const loadCharges = useCallback(async (id: string) => {
-    const [chargesResponse, paymentsResponse] = await Promise.all([
-      fetch(`/api/billing/charges?academyId=${id}`),
-      fetch(`/api/billing/payments?academyId=${id}`)
-    ]);
-    if (chargesResponse.ok) setCharges((await chargesResponse.json()).charges);
-    if (paymentsResponse.ok) setPayments((await paymentsResponse.json()).payments);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const fetchChargesPage = useCallback(async (params: { academyId: string; status: string; q: string }, page: number, pageSize: number) => {
+    const query = new URLSearchParams({ academyId: params.academyId, status: params.status, page: String(page), pageSize: String(pageSize) });
+    if (params.q) query.set("q", params.q);
+    const response = await fetch(`/api/billing/charges?${query.toString()}`);
+    if (!response.ok) { setError(await readError(response, "No se pudieron cargar las cuotas")); return { items: [], hasMore: false }; }
+    const data = await response.json() as { charges: BillingCharge[]; hasMore: boolean };
+    return { items: data.charges, hasMore: data.hasMore };
   }, []);
 
-  const loadEnrollments = useCallback(async (id: string) => {
-    const response = await fetch(`/api/billing/enrollments?academyId=${id}`);
-    if (response.ok) setEnrollments((await response.json()).enrollments);
+  const fetchUnassignedPaymentsPage = useCallback(async (params: { academyId: string }, page: number, pageSize: number) => {
+    const query = new URLSearchParams({ academyId: params.academyId, unassigned: "true", page: String(page), pageSize: String(pageSize) });
+    const response = await fetch(`/api/billing/payments?${query.toString()}`);
+    if (!response.ok) { setError(await readError(response, "No se pudieron cargar los pagos")); return { items: [], hasMore: false }; }
+    const data = await response.json() as { payments: BillingPayment[]; hasMore: boolean };
+    return { items: data.payments, hasMore: data.hasMore };
+  }, []);
+
+  const fetchEnrollmentsPage = useCallback(async (params: { academyId: string }, page: number, pageSize: number) => {
+    const query = new URLSearchParams({ academyId: params.academyId, page: String(page), pageSize: String(pageSize) });
+    const response = await fetch(`/api/billing/enrollments?${query.toString()}`);
+    if (!response.ok) { setError(await readError(response, "No se pudieron cargar las inscripciones")); return { items: [], hasMore: false }; }
+    const data = await response.json() as { enrollments: EnrollmentRowDTO[]; hasMore: boolean };
+    return { items: data.enrollments, hasMore: data.hasMore };
+  }, []);
+
+  const chargesList = usePaginatedList({
+    params: academyId ? { academyId, status: statusFilter, q: debouncedSearch } : null,
+    fetchPage: fetchChargesPage
+  });
+  const unassignedList = usePaginatedList({
+    params: academyId ? { academyId } : null,
+    fetchPage: fetchUnassignedPaymentsPage
+  });
+  const enrollmentsList = usePaginatedList({
+    params: academyId ? { academyId } : null,
+    fetchPage: fetchEnrollmentsPage
+  });
+
+  const loadSummary = useCallback(async (id: string, status: string, q: string) => {
+    const query = new URLSearchParams({ academyId: id, status });
+    if (q) query.set("q", q);
+    const response = await fetch(`/api/billing/charges/summary?${query.toString()}`);
+    if (response.ok) setSummary(await response.json());
   }, []);
 
   useEffect(() => {
     if (!academyId) return;
-    const timer = window.setTimeout(() => { void loadCharges(academyId); void loadEnrollments(academyId); }, 0);
+    const timer = window.setTimeout(() => void loadSummary(academyId, statusFilter, debouncedSearch), 0);
     return () => window.clearTimeout(timer);
-  }, [academyId, loadCharges, loadEnrollments]);
+  }, [academyId, statusFilter, debouncedSearch, loadSummary]);
+
+  function reloadCharges() {
+    chargesList.reload();
+    unassignedList.reload();
+    void loadSummary(academyId, statusFilter, debouncedSearch);
+  }
 
   async function confirmPayment(paymentId: string) {
     const response = await fetch("/api/payments/confirm", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paymentId, idempotencyKey: crypto.randomUUID() }) });
     if (!response.ok) { setError(await readError(response, "No se pudo confirmar el pago")); return; }
-    setSuccess("Pago confirmado."); void loadCharges(academyId);
+    setSuccess("Pago confirmado."); reloadCharges();
   }
 
   async function reversePayment(paymentId: string) {
     const response = await fetch("/api/payments/reverse", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paymentId, reason: "Reversión manual desde Cobros", idempotencyKey: crypto.randomUUID() }) });
     if (!response.ok) { setError(await readError(response, "No se pudo revertir el pago")); return; }
-    setSuccess("Pago revertido."); void loadCharges(academyId);
+    setSuccess("Pago revertido."); reloadCharges();
   }
 
   if (academies === null) return <PageHeader eyebrow="Cuenta corriente" title="Cobros" description="Cargando academias…" />;
   if (academies.length === 0) return <><PageHeader eyebrow="Cuenta corriente" title="Cobros" description="Inscripciones y cuotas: quién debe, cuánto pagó y qué falta, en un solo lugar." />{error && <p className="rounded-xl bg-red-50 text-red-800 p-3 text-sm">{error}</p>}<Empty title="Sin academias asignadas" detail="Tu usuario no tiene acceso a ninguna academia." /></>;
 
-  const filteredCharges = (charges ?? []).filter((charge) =>
-    (statusFilter === "all" || charge.status === statusFilter) &&
-    (!search || `${charge.studentName} ${charge.studentCode}`.toLowerCase().includes(search.toLowerCase()))
-  );
-  const visibleCharges = filteredCharges.slice(0, visible);
-  const debt = filteredCharges.reduce((sum, charge) => sum + Math.max(0, charge.finalCents - charge.paidCents), 0);
-  const unassignedPayments = (payments ?? []).filter((payment) => !payment.allocatedChargeId);
+  const charges = chargesList.items;
+  const unassignedPayments = unassignedList.items;
+  const enrollments = enrollmentsList.items;
 
   return <>
     <PageHeader
@@ -117,19 +155,19 @@ export function BillingConsole() {
         <button onClick={() => setNewPaymentOpen(true)} className="btn btn-secondary"><Plus size={18} /> Registrar pago</button>
       </div>
       <div className="grid sm:grid-cols-3 gap-4 mb-5">
-        <Metric label="Saldo filtrado" value={formatMoney(debt)} note={`${filteredCharges.length} cargos`} />
-        <Metric label="Vencidos" value={String(filteredCharges.filter((charge) => charge.status === "overdue").length)} note="Requieren seguimiento" tone="red" />
-        <Metric label="Por validar" value={String((charges ?? []).filter((charge) => charge.pendingPayment).length)} note="Transferencias pendientes" tone="gold" />
+        <Metric label="Saldo filtrado" value={formatMoney(summary?.debtCents ?? 0)} note="Según el filtro actual" />
+        <Metric label="Vencidos" value={String(summary?.overdueCount ?? 0)} note="Requieren seguimiento" tone="red" />
+        <Metric label="Por validar" value={String(summary?.pendingValidationCount ?? 0)} note="Transferencias pendientes" tone="gold" />
       </div>
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
-        <input className="field flex-1" placeholder="Buscar alumno por nombre o código…" value={search} onChange={(e) => { setSearch(e.target.value); setVisible(25); }} />
-        <select className="field sm:max-w-xs" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setVisible(25); }}>{statusFilters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+        <input className="field flex-1" placeholder="Buscar alumno por nombre o código…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <select className="field sm:max-w-xs" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>{statusFilters.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
       </div>
       {charges === null
         ? <p className="muted text-sm">Cargando cuotas…</p>
         : <section className="card table-wrap">
           <table><thead><tr><th>Alumno</th><th>Concepto</th><th>Vencimiento</th><th>Importe</th><th>Pagado</th><th>Estado</th><th></th></tr></thead>
-            <tbody>{visibleCharges.map((charge) => <tr key={charge.id}>
+            <tbody>{charges.map((charge) => <tr key={charge.id}>
               <td><Link href={`/app/students/${charge.studentId}`} className="font-bold text-[var(--brand)]">{charge.studentName}</Link></td>
               <td>{charge.description}</td>
               <td>{formatDate(charge.dueDate)}</td>
@@ -143,11 +181,11 @@ export function BillingConsole() {
                   : <button onClick={() => setPayCharge(charge)} className="text-xs font-bold text-[var(--brand)]">Cobrar</button>}</td>
             </tr>)}</tbody>
           </table>
-          {visibleCharges.length === 0 && <Empty title="Sin resultados" detail="No hay cuotas que coincidan con la búsqueda." />}
+          {charges.length === 0 && <Empty title="Sin resultados" detail="No hay cuotas que coincidan con la búsqueda." />}
         </section>}
-      {filteredCharges.length > visible && <div className="flex items-center justify-between mt-4"><p className="text-xs muted">Mostrando {visibleCharges.length} de {filteredCharges.length}</p><button onClick={() => setVisible(visible + 25)} className="btn btn-secondary">Mostrar más</button></div>}
+      {chargesList.hasMore && <div className="flex items-center justify-between mt-4"><p className="text-xs muted">Mostrando {charges?.length ?? 0}</p><button onClick={() => void chargesList.loadMore()} disabled={chargesList.loading} className="btn btn-secondary">{chargesList.loading ? "Cargando…" : "Mostrar más"}</button></div>}
 
-      {unassignedPayments.length > 0 && <section className="card table-wrap mt-6">
+      {unassignedPayments !== null && unassignedPayments.length > 0 && <section className="card table-wrap mt-6">
         <div className="p-5 border-b border-[var(--line)]"><h3 className="font-black">Pagos sin asignar</h3><p className="muted text-xs mt-1">Señas registradas sin un cargo puntual todavía.</p></div>
         <table><thead><tr><th>Comprobante</th><th>Alumno</th><th>Fecha</th><th>Medio</th><th>Importe</th><th>Estado</th><th></th></tr></thead>
           <tbody>{unassignedPayments.map((payment) => <tr key={payment.id}>
@@ -164,6 +202,7 @@ export function BillingConsole() {
                 : null}</td>
           </tr>)}</tbody>
         </table>
+        {unassignedList.hasMore && <div className="flex items-center justify-between p-4 border-t border-[var(--line)]"><p className="text-xs muted">Mostrando {unassignedPayments.length}</p><button onClick={() => void unassignedList.loadMore()} disabled={unassignedList.loading} className="btn btn-secondary">{unassignedList.loading ? "Cargando…" : "Mostrar más"}</button></div>}
       </section>}
     </>}
 
@@ -191,10 +230,11 @@ export function BillingConsole() {
           </table>
           {enrollments.length === 0 && <Empty title="Sin inscripciones" detail="Todavía no hay inscripciones en esta academia." />}
         </section>}
+      {enrollmentsList.hasMore && <div className="flex items-center justify-between mt-4"><p className="text-xs muted">Mostrando {enrollments?.length ?? 0}</p><button onClick={() => void enrollmentsList.loadMore()} disabled={enrollmentsList.loading} className="btn btn-secondary">{enrollmentsList.loading ? "Cargando…" : "Mostrar más"}</button></div>}
     </>}
 
-    {payCharge && <PayChargeModal studentId={payCharge.studentId} academyId={academyId} charge={payCharge} onClose={() => setPayCharge(null)} onPaid={() => { setPayCharge(null); setSuccess("Cobro registrado."); void loadCharges(academyId); }} />}
-    {newPaymentOpen && <NewPaymentModal academyId={academyId} onClose={() => setNewPaymentOpen(false)} onRegistered={() => { setSuccess("Pago registrado."); void loadCharges(academyId); }} />}
-    {newEnrollmentOpen && <NewEnrollmentModal onClose={() => setNewEnrollmentOpen(false)} academyId={academyId} onCreated={() => { setSuccess("Alumno inscripto."); void loadEnrollments(academyId); void loadCharges(academyId); }} />}
+    {payCharge && <PayChargeModal studentId={payCharge.studentId} academyId={academyId} charge={payCharge} onClose={() => setPayCharge(null)} onPaid={() => { setPayCharge(null); setSuccess("Cobro registrado."); reloadCharges(); }} />}
+    {newPaymentOpen && <NewPaymentModal academyId={academyId} onClose={() => setNewPaymentOpen(false)} onRegistered={() => { setSuccess("Pago registrado."); reloadCharges(); }} />}
+    {newEnrollmentOpen && <NewEnrollmentModal onClose={() => setNewEnrollmentOpen(false)} academyId={academyId} onCreated={() => { setSuccess("Alumno inscripto."); enrollmentsList.reload(); reloadCharges(); }} />}
   </>;
 }

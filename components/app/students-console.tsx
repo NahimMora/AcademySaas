@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BadgeCheck, ChevronRight, Filter, Plus, Search } from "lucide-react";
 import { formatDate } from "@/lib/domain/format";
 import { Empty, Modal, PageHeader, StatusBadge } from "@/components/app/ui";
+import { usePaginatedList } from "@/components/app/hooks/use-paginated-list";
 import type { AcademyOption, StudentListItemDTO } from "@/lib/students/types";
-
-function normalizeSearch(text: string) { return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 
 function calculateAge(birthDate: string, today = new Date()): number {
   const dob = new Date(`${birthDate}T00:00:00`);
@@ -90,13 +89,12 @@ function NewStudentModal({ open, onClose, academyId, onCreated }: { open: boolea
 export function StudentsConsole() {
   const [academies, setAcademies] = useState<AcademyOption[] | null>(null);
   const [academyId, setAcademyId] = useState("");
-  const [students, setStudents] = useState<StudentListItemDTO[] | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [visible, setVisible] = useState(25);
   const [newStudentOpen, setNewStudentOpen] = useState(false);
 
   useEffect(() => {
@@ -109,25 +107,24 @@ export function StudentsConsole() {
     })();
   }, []);
 
-  async function loadStudents(id: string) {
-    if (!id) return;
-    const response = await fetch(`/api/students?academyId=${id}`);
-    if (!response.ok) { setError(await readError(response, "No se pudieron cargar los alumnos")); return; }
-    const data = await response.json() as { students: StudentListItemDTO[] };
-    setStudents(data.students);
-  }
-
   useEffect(() => {
-    if (!academyId) return;
-    const timer = window.setTimeout(() => void loadStudents(academyId), 0);
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
     return () => window.clearTimeout(timer);
-  }, [academyId]);
+  }, [search]);
 
-  const filtered = (students ?? []).filter((student) =>
-    (statusFilter === "all" || student.status === statusFilter) &&
-    normalizeSearch(`${student.firstName} ${student.lastName} ${student.dniMasked} ${student.publicCode}`).includes(normalizeSearch(search))
-  );
-  const list = filtered.slice(0, visible);
+  const fetchStudentsPage = useCallback(async (params: { academyId: string; status: string; q: string }, page: number, pageSize: number) => {
+    const query = new URLSearchParams({ academyId: params.academyId, status: params.status, page: String(page), pageSize: String(pageSize) });
+    if (params.q) query.set("q", params.q);
+    const response = await fetch(`/api/students?${query.toString()}`);
+    if (!response.ok) { setError(await readError(response, "No se pudieron cargar los alumnos")); return { items: [], hasMore: false }; }
+    const data = await response.json() as { students: StudentListItemDTO[]; hasMore: boolean };
+    return { items: data.students, hasMore: data.hasMore };
+  }, []);
+
+  const { items: students, hasMore, loading, loadMore, reload } = usePaginatedList({
+    params: academyId ? { academyId, status: statusFilter, q: debouncedSearch } : null,
+    fetchPage: fetchStudentsPage
+  });
 
   if (academies === null) return <PageHeader eyebrow="Legajos" title="Alumnos" description="Cargando academias…" />;
   if (academies.length === 0) return <><PageHeader eyebrow="Legajos" title="Alumnos" description="Datos administrativos, inscripciones, pagos y asistencia en una sola ficha." />{error && <p className="rounded-xl bg-red-50 text-red-800 p-3 text-sm">{error}</p>}<Empty title="Sin academias asignadas" detail="Tu usuario no tiene acceso a ninguna academia." /></>;
@@ -145,11 +142,11 @@ export function StudentsConsole() {
 
     <div className="mb-4">
       <div className="flex flex-col sm:flex-row gap-2">
-        <label className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 muted" size={18} /><input className="field pl-10" value={search} onChange={(e) => { setSearch(e.target.value); setVisible(25); }} placeholder="Buscar por nombre, código o DNI…" /></label>
+        <label className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 muted" size={18} /><input className="field pl-10" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nombre, código o DNI…" /></label>
         <button onClick={() => setFiltersOpen(!filtersOpen)} className={`btn ${filtersOpen || statusFilter !== "all" ? "btn-primary" : "btn-secondary"}`}><Filter size={17} /> Filtros{statusFilter !== "all" ? " · 1" : ""}</button>
       </div>
       {filtersOpen && <div className="mt-3 p-3 rounded-xl border border-[var(--line)] flex flex-wrap gap-2">
-        {statusOptions.map(([value, label]) => <button key={value} onClick={() => { setStatusFilter(value); setVisible(25); }} className={`btn ${statusFilter === value ? "btn-primary" : "btn-secondary"}`}>{label}</button>)}
+        {statusOptions.map(([value, label]) => <button key={value} onClick={() => setStatusFilter(value)} className={`btn ${statusFilter === value ? "btn-primary" : "btn-secondary"}`}>{label}</button>)}
       </div>}
     </div>
 
@@ -157,7 +154,7 @@ export function StudentsConsole() {
       ? <p className="muted text-sm">Cargando alumnos…</p>
       : <section className="card table-wrap">
         <table><thead><tr><th>Alumno</th><th>DNI</th><th>Contacto</th><th>Estado</th><th>Alta</th><th></th></tr></thead>
-          <tbody>{list.map((student) => <tr key={student.id}>
+          <tbody>{students.map((student) => <tr key={student.id}>
             <td><Link href={`/app/students/${student.id}`} className="flex items-center gap-3"><span className="grid place-items-center size-9 rounded-xl bg-[var(--brand-soft)] text-[var(--brand)] font-black text-xs">{student.firstName[0]}{student.lastName[0]}</span><span><strong>{student.lastName}, {student.firstName}</strong><small className="block muted">{student.publicCode}{student.hasGuardian ? " · Menor con tutor" : ""}</small></span></Link></td>
             <td>{student.dniMasked}</td>
             <td>{student.phone}<small className="block muted">{student.email ?? "Sin correo"}</small></td>
@@ -166,10 +163,10 @@ export function StudentsConsole() {
             <td><Link href={`/app/students/${student.id}`} aria-label="Ver alumno"><ChevronRight size={18} /></Link></td>
           </tr>)}</tbody>
         </table>
-        {list.length === 0 && <Empty title="Sin resultados" detail="No hay alumnos que coincidan con la búsqueda." />}
+        {students.length === 0 && <Empty title="Sin resultados" detail="No hay alumnos que coincidan con la búsqueda." />}
       </section>}
-    {filtered.length > visible && <div className="flex items-center justify-between mt-4"><p className="text-xs muted">Mostrando {list.length} de {filtered.length}</p><button onClick={() => setVisible(visible + 25)} className="btn btn-secondary">Mostrar más</button></div>}
+    {hasMore && <div className="flex items-center justify-between mt-4"><p className="text-xs muted">Mostrando {students?.length ?? 0}</p><button onClick={() => void loadMore()} disabled={loading} className="btn btn-secondary">{loading ? "Cargando…" : "Mostrar más"}</button></div>}
 
-    <NewStudentModal open={newStudentOpen} onClose={() => setNewStudentOpen(false)} academyId={academyId} onCreated={(publicCode) => { setSuccess(`Alumno dado de alta con código ${publicCode}.`); void loadStudents(academyId); }} />
+    <NewStudentModal open={newStudentOpen} onClose={() => setNewStudentOpen(false)} academyId={academyId} onCreated={(publicCode) => { setSuccess(`Alumno dado de alta con código ${publicCode}.`); reload(); }} />
   </>;
 }

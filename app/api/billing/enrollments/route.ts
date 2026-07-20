@@ -4,9 +4,16 @@ import { readSession } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validation";
 import { loadAllocationState } from "@/lib/billing/allocations";
+import { resolveMatchingStudentIds } from "@/lib/students/search";
 import type { EnrollmentRowDTO } from "@/lib/billing/types";
 
-const querySchema = z.object({ academyId: uuidSchema });
+const querySchema = z.object({
+  academyId: uuidSchema,
+  status: z.enum(["all", "pre_enrolled", "pending_payment", "confirmed", "attending", "suspended", "overdue", "dropped_out", "completed", "cancelled", "expelled"]).default("all"),
+  q: z.string().max(80).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25)
+});
 
 export async function GET(request: Request) {
   const user = await readSession();
@@ -15,13 +22,22 @@ export async function GET(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Academia inválida" }, { status: 400 });
   try {
     const supabase = await createSupabaseServerClient();
-    const { data: enrollmentRows, error } = await supabase.from("enrollments")
+
+    const matchingStudentIds = await resolveMatchingStudentIds(supabase, user.workspaceId, parsed.data.academyId, parsed.data.q);
+    if (matchingStudentIds?.length === 0) return NextResponse.json({ enrollments: [], hasMore: false });
+
+    let query = supabase.from("enrollments")
       .select("id,student_id,cohort_id,agreed_price_cents,installment_count,status")
       .eq("workspace_id", user.workspaceId)
-      .eq("academy_id", parsed.data.academyId)
-      .order("created_at", { ascending: false })
-      .limit(100);
+      .eq("academy_id", parsed.data.academyId);
+    if (parsed.data.status !== "all") query = query.eq("status", parsed.data.status);
+    if (matchingStudentIds) query = query.in("student_id", matchingStudentIds);
+
+    const from = (parsed.data.page - 1) * parsed.data.pageSize;
+    const { data: pageRows, error } = await query.order("created_at", { ascending: false }).range(from, from + parsed.data.pageSize);
     if (error) return NextResponse.json({ error: "No se pudieron cargar las inscripciones" }, { status: 500 });
+    const hasMore = (pageRows ?? []).length > parsed.data.pageSize;
+    const enrollmentRows = (pageRows ?? []).slice(0, parsed.data.pageSize);
 
     const studentIds = Array.from(new Set((enrollmentRows ?? []).map((row) => row.student_id)));
     const { data: studentRows } = studentIds.length
@@ -61,6 +77,6 @@ export async function GET(request: Request) {
         status: row.status, chargesTotal: charges.length, chargesPaid, balanceCents
       };
     });
-    return NextResponse.json({ enrollments });
+    return NextResponse.json({ enrollments, hasMore });
   } catch { return NextResponse.json({ error: "El servicio de datos no está disponible." }, { status: 503 }); }
 }
