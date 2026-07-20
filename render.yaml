@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: academia-saas
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_DEMO_MODE
+        value: "false"
+      - key: NEXT_PUBLIC_APP_URL
+        value: "https://academysaas.moraapps.com"
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: NEXT_PUBLIC_SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: APP_ENCRYPTION_KEY
+        generateValue: true
+      - key: QR_TOKEN_PEPPER
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
