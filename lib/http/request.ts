@@ -12,7 +12,9 @@ export function timingSafeEqualText(left: string, right: string) {
 export function isSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return true;
-  const requestOrigin = new URL(request.url).origin;
+  const proto = request.headers.get("x-forwarded-proto") ?? new URL(request.url).protocol.replace(":", "");
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? new URL(request.url).host;
+  const requestOrigin = `${proto}://${host}`;
   const expected = process.env.NEXT_PUBLIC_APP_URL || requestOrigin;
   if (process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1"].includes(new URL(origin).hostname)) return true;
   return origin === requestOrigin || origin === new URL(expected).origin;
