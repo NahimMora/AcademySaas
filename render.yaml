@@ -3,7 +3,7 @@ services:
     name: academia-saas
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter
+    plan: free # subir a starter cuando haya tarjeta cargada (free se duerme tras 15min sin trafico)
     healthCheckPath: /api/health
     autoDeployTrigger: commit
     envVars:
@@ -25,3 +25,29 @@ services:
         generateValue: true
       - key: CRON_SECRET
         generateValue: true
+      - key: LOG_LEVEL
+        value: info
+      - key: WHATSAPP_ENABLED
+        value: "false"
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_BUCKET_PRIVATE
+        value: academysaas
+      - key: EMAIL_FROM
+        value: "Academia SaaS <no-reply@academysaas.moraapps.com>"
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
