@@ -66,7 +66,7 @@ export function CoursesConsole() {
         {courses.map((course) => <Link href={`/app/courses/${course.id}`} key={course.id} className="card p-5 hover:-translate-y-0.5 transition">
           <span className="grid place-items-center size-11 rounded-xl bg-[var(--brand-soft)] text-[var(--brand)]"><BookOpen /></span>
           <h3 className="font-black mt-4">{course.name}</h3>
-          <p className="muted text-sm mt-1">Código {course.code}{course.estimatedDurationWeeks ? ` · ${course.estimatedDurationWeeks} semanas` : ""}</p>
+          <p className="muted text-sm mt-1">Código {course.code}{course.estimatedDurationWeeks ? ` · ${Math.round(course.estimatedDurationWeeks / 4.345)} meses` : ""}</p>
           <div className="flex justify-between border-t border-[var(--line)] mt-5 pt-4 text-sm">
             <span>{course.defaultInstallments} cuotas</span>
             <strong>{formatMoney(course.suggestedPriceCents ?? 0)}</strong>

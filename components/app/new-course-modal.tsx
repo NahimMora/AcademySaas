@@ -19,11 +19,14 @@ export function NewCourseModal({ open, onClose, academyId, onCreated }: { open: 
     const data = new FormData(event.currentTarget);
     setSubmitting(true); setError("");
     try {
+      const months = Number(data.get("estimatedDurationMonths")) || 0;
       const response = await fetch("/api/courses", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
           academyId, name: String(data.get("name")),
-          estimatedDurationWeeks: Number(data.get("estimatedDurationWeeks")) || undefined,
+          // La tabla guarda semanas (estimated_duration_weeks); el formulario pide meses porque es
+          // como se piensa la duración de un curso en la práctica. 1 mes ≈ 4,345 semanas.
+          estimatedDurationWeeks: months > 0 ? Math.round(months * 4.345) : undefined,
           defaultInstallments: Number(data.get("defaultInstallments")) || 1,
           classDurationMinutes: Number(data.get("classDurationMinutes")) || undefined,
           suggestedCapacity: Number(data.get("suggestedCapacity")) || undefined,
@@ -42,7 +45,7 @@ export function NewCourseModal({ open, onClose, academyId, onCreated }: { open: 
     {error && <p className="mb-4 rounded-xl bg-red-50 text-red-800 p-3 text-sm">{error}</p>}
     <form onSubmit={submit} className="grid sm:grid-cols-2 gap-4">
       <label className="label sm:col-span-2">Nombre<input className="field" name="name" required /></label>
-      <label className="label">Duración (semanas)<input className="field" name="estimatedDurationWeeks" type="number" min="1" max="260" defaultValue="12" /></label>
+      <label className="label">Duración (meses)<input className="field" name="estimatedDurationMonths" type="number" min="1" max="60" defaultValue="3" /></label>
       <label className="label">Cuotas sugeridas<input className="field" name="defaultInstallments" type="number" min="1" max="60" defaultValue="6" /></label>
       <label className="label">Duración de clase (min)<input className="field" name="classDurationMinutes" type="number" min="1" max="600" defaultValue="120" /></label>
       <label className="label">Cupo sugerido<input className="field" name="suggestedCapacity" type="number" min="1" max="500" defaultValue="20" /></label>

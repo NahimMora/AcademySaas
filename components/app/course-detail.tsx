@@ -42,7 +42,7 @@ export function CourseDetail({ id }: { id: string }) {
     <Link href="/app/courses" className="text-sm font-bold text-[var(--brand)]">← Volver a cursos</Link>
     <PageHeader
       eyebrow={`Código ${course.code}`} title={course.name}
-      description={`${course.estimatedDurationWeeks ? `${course.estimatedDurationWeeks} semanas · ` : ""}comisiones concretas de este curso`}
+      description={`${course.estimatedDurationWeeks ? `${Math.round(course.estimatedDurationWeeks / 4.345)} meses · ` : ""}comisiones concretas de este curso`}
       action={user.role === "owner" && <button onClick={() => setNewCohortOpen(true)} className="btn btn-primary"><Plus size={17} /> Nueva comisión</button>}
     />
     <div className="grid sm:grid-cols-3 gap-4 mb-5">

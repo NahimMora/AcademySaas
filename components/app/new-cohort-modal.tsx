@@ -16,6 +16,16 @@ async function readError(response: Response, fallback: string) {
   return typeof body?.error === "string" ? body.error : fallback;
 }
 
+// "Hoy" en huso horario de negocio, no en el del navegador (mismo criterio que el resto de la app).
+function businessToday(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+function addDays(dateStr: string, days: number): string {
+  const date = new Date(`${dateStr}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId: fixedAcademyId }: {
   onClose(): void; onCreated(): void; defaultCourseId?: string; academyId?: string;
 }) {
@@ -28,8 +38,9 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [instructorUserId, setInstructorUserId] = useState("");
   const [name, setName] = useState("");
-  const [startDate, setStartDate] = useState("");
+  const [startDate, setStartDate] = useState(businessToday);
   const [estimatedEndDate, setEstimatedEndDate] = useState("");
+  const [endDateTouched, setEndDateTouched] = useState(false);
   const [capacity, setCapacity] = useState("20");
   const [installmentCount, setInstallmentCount] = useState("6");
   const [installmentPrice, setInstallmentPrice] = useState("");
@@ -82,6 +93,12 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
   const selectedCourse = courses.find((course) => course.id === courseId);
   const installmentsNum = Math.max(1, Math.round(Number(installmentCount)) || 1);
 
+  // Se calcula sola a partir de la fecha de inicio y la duración del curso elegido, salvo que la
+  // persona ya la haya tocado a mano (ahí dejamos de pisarle el valor). Se deriva en el render en
+  // vez de en un efecto: es puro estado derivado, no una sincronización con algo externo.
+  const computedEndDate = startDate && selectedCourse?.estimatedDurationWeeks ? addDays(startDate, selectedCourse.estimatedDurationWeeks * 7) : "";
+  const displayedEndDate = endDateTouched ? estimatedEndDate : computedEndDate;
+
   function close() { setError(""); onClose(); }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -93,7 +110,7 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
           academyId, branchId, courseId, name, instructorUserId: instructorUserId || null,
-          startDate, estimatedEndDate, capacity: Number(capacity), installmentCount: installmentsNum,
+          startDate, estimatedEndDate: displayedEndDate, capacity: Number(capacity), installmentCount: installmentsNum,
           installmentCents: Math.round(Number(installmentPrice || "0") * 100), dueDay: Number(dueDay),
           commissionBps: Math.round(Math.max(0, Math.min(100, Number(commissionPercent))) * 100), debtPolicy,
           scheduleDays: scheduleDays.map((day) => ({ weekday: day.weekday, startsAt: day.startsAt, endsAt: day.endsAt })),
@@ -126,7 +143,7 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
       <div className="grid sm:grid-cols-2 gap-4 pt-5 border-t border-[var(--line)]">
         <h4 className="sm:col-span-2 text-xs font-bold uppercase muted tracking-wide">Fechas y días de cursada</h4>
         <label className="label">Fecha de inicio<input className="field" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} required /></label>
-        <label className="label">Fecha estimada de fin<input className="field" type="date" value={estimatedEndDate} onChange={(e) => setEstimatedEndDate(e.target.value)} required /></label>
+        <label className="label">Fecha estimada de fin<input className="field" type="date" value={displayedEndDate} onChange={(e) => { setEstimatedEndDate(e.target.value); setEndDateTouched(true); }} required /><p className="text-xs muted mt-1">{endDateTouched ? "Ajustada a mano." : "Calculada sola según la duración del curso."}</p></label>
         <div className="sm:col-span-2">
           <p className="label mb-1">Días de cursada</p>
           <div className="flex flex-wrap gap-2">{weekdayNames.map((label, weekday) => <button type="button" key={weekday} onClick={() => toggleWeekday(weekday)} className={`btn ${scheduleDays.some((day) => day.weekday === weekday) ? "btn-primary" : "btn-secondary"}`}>{label}</button>)}</div>
