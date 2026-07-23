@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { formatMoney } from "@/lib/domain/money";
 import { Modal } from "@/components/app/ui";
+import { MoneyInput } from "@/components/app/money-input";
 import type { ChargeRowDTO } from "@/lib/students/types";
 
 const methodLabels: Record<string, string> = {
@@ -44,7 +45,7 @@ export function PayChargeModal({ studentId, academyId, charge, onClose, onPaid }
     <form onSubmit={submit} className="grid gap-4">
       {error && <p className="rounded-xl bg-red-50 text-red-800 p-3 text-sm">{error}</p>}
       <div className="grid grid-cols-2 gap-4">
-        <label className="label">Importe ARS<input className="field" type="number" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required /></label>
+        <label className="label">Importe ARS<MoneyInput value={amount} onChange={setAmount} required /></label>
         <label className="label">Medio<select className="field" value={method} onChange={(e) => setMethod(e.target.value)}>{Object.entries(methodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       </div>
       <p className="rounded-xl bg-amber-50 text-amber-900 p-3 text-xs">El efectivo se cobra solo desde Caja, con la caja de la sede abierta. Acá el pago queda pendiente de validación hasta confirmarlo.</p>

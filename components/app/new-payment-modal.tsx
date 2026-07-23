@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatMoney } from "@/lib/domain/money";
 import { Modal } from "@/components/app/ui";
 import { StudentPicker } from "@/components/app/student-picker";
+import { MoneyInput } from "@/components/app/money-input";
 import type { StudentHit, PayableCharge, BranchOption } from "@/lib/cash/types";
 
 const methodLabels: Record<string, string> = {
@@ -95,7 +96,7 @@ export function NewPaymentModal({ academyId, onClose, onRegistered }: { academyI
       </label>}
       {!chargeId && student && <label className="label">Sede<select className="field" value={branchId} onChange={(e) => setBranchId(e.target.value)}>{(branches ?? []).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>}
       <div className="grid grid-cols-2 gap-4">
-        <label className="label">Importe ARS<input className="field" type="number" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required /></label>
+        <label className="label">Importe ARS<MoneyInput value={amount} onChange={setAmount} required /></label>
         <label className="label">Medio<select className="field" value={method} onChange={(e) => setMethod(e.target.value)}>{Object.entries(methodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       </div>
       <p className="rounded-xl bg-amber-50 text-amber-900 p-3 text-xs">El efectivo se cobra solo desde Caja, con la caja de la sede abierta. Acá el pago queda pendiente de validación hasta confirmarlo.</p>

@@ -10,8 +10,10 @@ import type { CohortOption } from "@/lib/billing/types";
 const querySchema = z.object({
   academyId: uuidSchema,
   courseId: uuidSchema.optional(),
+  branchId: uuidSchema.optional(),
   instructorUserId: uuidSchema.optional(),
   status: z.enum(["all", "draft", "scheduled", "active", "paused", "finished", "cancelled", "archived"]).optional(),
+  q: z.string().max(80).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(100)
 });
@@ -57,9 +59,14 @@ export async function GET(request: Request) {
     if (parsed.data.status && parsed.data.status !== "all") query = query.eq("status", parsed.data.status);
     else if (!parsed.data.status) query = query.in("status", ["scheduled", "active"]);
     if (parsed.data.courseId) query = query.eq("course_id", parsed.data.courseId);
+    if (parsed.data.branchId) query = query.eq("branch_id", parsed.data.branchId);
     // Un instructor solo ve sus propias comisiones, sin importar qué instructorUserId pida por query string.
     const instructorFilter = user.role === "instructor" ? user.id : parsed.data.instructorUserId;
     if (instructorFilter) query = query.eq("instructor_user_id", instructorFilter);
+    if (parsed.data.q) {
+      const term = parsed.data.q.replace(/[%,]/g, "").trim();
+      if (term) query = query.or(`name.ilike.%${term}%,code.ilike.%${term}%`);
+    }
 
     const from = (parsed.data.page - 1) * parsed.data.pageSize;
     const { data: pageRows, error } = await query.order("name").range(from, from + parsed.data.pageSize);

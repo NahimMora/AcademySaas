@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Modal } from "@/components/app/ui";
+import { MoneyInput } from "@/components/app/money-input";
 
 async function readError(response: Response, fallback: string) {
   const body = await response.json().catch(() => null);
@@ -11,6 +12,7 @@ async function readError(response: Response, fallback: string) {
 export function NewCourseModal({ open, onClose, academyId, onCreated }: { open: boolean; onClose(): void; academyId: string; onCreated(): void }) {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [suggestedPrice, setSuggestedPrice] = useState("0");
 
   function close() { setError(""); onClose(); }
 
@@ -30,7 +32,7 @@ export function NewCourseModal({ open, onClose, academyId, onCreated }: { open: 
           defaultInstallments: Number(data.get("defaultInstallments")) || 1,
           classDurationMinutes: Number(data.get("classDurationMinutes")) || undefined,
           suggestedCapacity: Number(data.get("suggestedCapacity")) || undefined,
-          suggestedPriceCents: Math.round(Number(data.get("suggestedPrice") || "0") * 100)
+          suggestedPriceCents: Math.round(Number(suggestedPrice || "0") * 100)
         })
       });
       if (!response.ok) { setError(await readError(response, "No se pudo crear el curso")); return; }
@@ -49,7 +51,7 @@ export function NewCourseModal({ open, onClose, academyId, onCreated }: { open: 
       <label className="label">Cuotas sugeridas<input className="field" name="defaultInstallments" type="number" min="1" max="60" defaultValue="6" /></label>
       <label className="label">Duración de clase (min)<input className="field" name="classDurationMinutes" type="number" min="1" max="600" defaultValue="120" /></label>
       <label className="label">Cupo sugerido<input className="field" name="suggestedCapacity" type="number" min="1" max="500" defaultValue="20" /></label>
-      <label className="label sm:col-span-2">Precio sugerido ARS<input className="field" name="suggestedPrice" type="number" min="0" step="0.01" defaultValue="0" /></label>
+      <label className="label sm:col-span-2">Precio sugerido ARS<MoneyInput value={suggestedPrice} onChange={setSuggestedPrice} /></label>
       <div className="sm:col-span-2 flex justify-end gap-2 mt-2">
         <button type="button" className="btn btn-secondary" onClick={close}>Cancelar</button>
         <button className="btn btn-primary" disabled={submitting}>{submitting ? "Creando…" : "Crear curso"}</button>

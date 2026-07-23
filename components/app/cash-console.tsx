@@ -5,6 +5,7 @@ import { Banknote, LockKeyhole, RefreshCcw, WalletCards } from "lucide-react";
 import { formatMoney } from "@/lib/domain/money";
 import { formatDateTime, formatTime } from "@/lib/domain/format";
 import { Empty, Metric, Modal, PageHeader } from "@/components/app/ui";
+import { MoneyInput } from "@/components/app/money-input";
 import type { BranchOption, CashMovementDTO, CashSessionDTO, PayableCharge, StudentHit } from "@/lib/cash/types";
 
 const movementLabels: Record<CashMovementDTO["type"], string> = {
@@ -159,7 +160,7 @@ export function CashConsole() {
           <h3 className="font-black">Abrir caja</h3>
           <p className="muted text-sm mt-1">Cargá el efectivo físico inicial de {selectedBranch?.name}. Los demás medios de pago se acumulan desde cero.</p>
           <div className="flex flex-col sm:flex-row sm:items-end gap-3 mt-4">
-            <label className="label sm:max-w-xs">Efectivo inicial<input className="field" type="number" min="0" value={openingInput} onChange={(e) => setOpeningInput(e.target.value)} /></label>
+            <label className="label sm:max-w-xs">Efectivo inicial<MoneyInput value={openingInput} onChange={setOpeningInput} /></label>
             <button onClick={() => void openCash()} disabled={opening} className="btn btn-primary"><WalletCards size={17} /> {opening ? "Abriendo…" : "Abrir caja"}</button>
           </div>
         </section>}
@@ -182,7 +183,7 @@ export function CashConsole() {
     <Modal open={closeModalOpen} onClose={() => setCloseModalOpen(false)} title="Cerrar caja" description="Contá únicamente el efectivo físico; se compara con lo esperado.">
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="rounded-xl bg-gray-50 p-4"><p className="text-xs font-bold uppercase muted">Esperado</p><p className="mt-1 text-xl font-black">{formatMoney(expectedCents)}</p></div>
-        <label className="label">Efectivo contado<input className="field" type="number" min="0" autoFocus value={countedInput} onChange={(e) => setCountedInput(e.target.value)} /></label>
+        <label className="label">Efectivo contado<MoneyInput value={countedInput} onChange={setCountedInput} autoFocus /></label>
       </div>
       <label className="label mt-4">Observación (opcional)<input className="field" value={closeNote} onChange={(e) => setCloseNote(e.target.value)} /></label>
       <div className="flex justify-end gap-2 mt-5"><button className="btn btn-secondary" onClick={() => setCloseModalOpen(false)}>Cancelar</button><button className="btn btn-danger" disabled={closing || countedInput.trim() === ""} onClick={() => void closeCash()}><LockKeyhole size={16} /> {closing ? "Cerrando…" : "Confirmar cierre"}</button></div>
@@ -267,7 +268,7 @@ function QuickPaymentModal({ branch, cashSessionId, onClose, onRegistered }: { b
         <select className="field" value={chargeId} onChange={(e) => pickCharge(e.target.value)}><option value="">Seña / sin asignar</option>{charges.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.description} · saldo {formatMoney(candidate.remainingCents)}</option>)}</select>
         {charges.length === 0 && <p className="text-xs muted mt-1">Este alumno no tiene cuotas pendientes.</p>}
       </label>}
-      <label className="label">Importe ARS<input className="field" type="number" min="1" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required /></label>
+      <label className="label">Importe ARS<MoneyInput value={amount} onChange={setAmount} required /></label>
       <p className="rounded-xl bg-amber-50 text-amber-900 p-3 text-xs">Este flujo solo admite pagos en efectivo, confirmados al instante contra la caja abierta.</p>
       <div className="flex justify-end gap-2"><button type="button" onClick={onClose} className="btn btn-secondary">Cancelar</button><button className="btn btn-primary" disabled={!student || submitting}>{submitting ? "Registrando…" : "Registrar"}</button></div>
     </form>

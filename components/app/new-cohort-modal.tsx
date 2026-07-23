@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { Modal } from "@/components/app/ui";
+import { MoneyInput } from "@/components/app/money-input";
 import { businessToday } from "@/lib/domain/format";
 import type { AcademyOption } from "@/lib/students/types";
 import type { CourseOption } from "@/lib/billing/types";
@@ -11,6 +13,7 @@ type TeacherOption = { userId: string; fullName: string };
 type ScheduleRow = { weekday: number; startsAt: string; endsAt: string };
 
 const weekdayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const letterAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 async function readError(response: Response, fallback: string) {
   const body = await response.json().catch(() => null);
@@ -21,6 +24,17 @@ function addDays(dateStr: string, days: number): string {
   const date = new Date(`${dateStr}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+// PRNG determinístico simple sembrado por seed: alcanza para "3 letras que cambian al elegir otro curso
+// o tocar Generar otro", sin necesitar aleatoriedad criptográfica. Sembrarlo con la seed (en vez de
+// Math.random) además hace que useMemo dependa de verdad de [courseId, nameRegenKey].
+function seededLetters(seed: string, count: number): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+  let out = "";
+  for (let i = 0; i < count; i++) { h = (h * 1103515245 + 12345) | 0; out += letterAlphabet[Math.abs(h) % letterAlphabet.length]; }
+  return out;
 }
 
 export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId: fixedAcademyId }: {
@@ -34,7 +48,7 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
   const [branchId, setBranchId] = useState("");
   const [teachers, setTeachers] = useState<TeacherOption[]>([]);
   const [instructorUserId, setInstructorUserId] = useState("");
-  const [name, setName] = useState("");
+  const [nameRegenKey, setNameRegenKey] = useState(0);
   const [startDate, setStartDate] = useState(businessToday);
   const [estimatedEndDate, setEstimatedEndDate] = useState("");
   const [endDateTouched, setEndDateTouched] = useState(false);
@@ -91,6 +105,11 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
 
   const selectedCourse = courses.find((course) => course.id === courseId);
 
+  // Nombre de la comisión: nombre_del_curso + 3 letras mayúsculas al azar (regenerables), nunca a mano.
+  // Igual que idempotencyKey más abajo, useMemo alcanza para "generar una vez y mantener" sin useEffect.
+  const nameSuffix = useMemo(() => seededLetters(`${courseId}-${nameRegenKey}`, 3), [courseId, nameRegenKey]);
+  const generatedName = selectedCourse ? `${selectedCourse.name}_${nameSuffix}` : "";
+
   // Cuotas, precio de cuota y fecha de fin se calculan solas a partir del curso elegido (1 cuota
   // por mes de duración, precio = precio sugerido del curso / cantidad de cuotas), salvo que la
   // persona ya haya tocado ese campo a mano. Todo derivado en el render, no en un efecto: es
@@ -110,12 +129,13 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (scheduleDays.length === 0) { setError("Elegí al menos un día de cursada."); return; }
+    if (!generatedName) { setError("Elegí un curso primero."); return; }
     setSubmitting(true); setError("");
     try {
       const response = await fetch("/api/cohorts", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          academyId, branchId, courseId, name, instructorUserId: instructorUserId || null,
+          academyId, branchId, courseId, name: generatedName, instructorUserId: instructorUserId || null,
           startDate, estimatedEndDate: displayedEndDate, capacity: Number(capacity), installmentCount: installmentsNum,
           installmentCents: Math.round(Number(displayedInstallmentPrice || "0") * 100), dueDay: Number(dueDay),
           commissionBps: Math.round(Math.max(0, Math.min(100, Number(commissionPercent))) * 100), debtPolicy,
@@ -143,7 +163,13 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
           : <label className="label sm:col-span-2">Curso<select className="field" value={courseId} onChange={(e) => setCourseId(e.target.value)} required><option value="">Elegí un curso…</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.name}</option>)}</select></label>}
         <label className="label">Sede<select className="field" value={branchId} onChange={(e) => setBranchId(e.target.value)} required><option value="">Elegí una sede…</option>{branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label>
         <label className="label">Profesor<select className="field" value={instructorUserId} onChange={(e) => setInstructorUserId(e.target.value)}><option value="">Sin asignar (a definir)</option>{teachers.map((teacher) => <option key={teacher.userId} value={teacher.userId}>{teacher.fullName}</option>)}</select></label>
-        <label className="label sm:col-span-2">Nombre de la comisión<input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Barbería Inicial F" required /></label>
+        <label className="label sm:col-span-2">Nombre de la comisión
+          <div className="field flex items-center justify-between gap-2">
+            <strong>{generatedName || "Elegí un curso para generar el nombre…"}</strong>
+            {selectedCourse && <button type="button" onClick={() => setNameRegenKey((k) => k + 1)} className="text-xs font-bold text-[var(--brand)] flex items-center gap-1 shrink-0"><RefreshCw size={13} /> Generar otro</button>}
+          </div>
+          <p className="text-xs muted mt-1">Automático: nombre del curso + 3 letras al azar.</p>
+        </label>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-4 pt-5 border-t border-[var(--line)]">
@@ -170,7 +196,7 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
         <label className="label">Cupo máximo<input className="field" type="number" min="1" max="500" value={capacity} onChange={(e) => setCapacity(e.target.value)} required /></label>
         <label className="label">Día de vencimiento (1-28)<input className="field" type="number" min="1" max="28" value={dueDay} onChange={(e) => setDueDay(e.target.value)} required /></label>
         <label className="label">Cantidad de cuotas<input className="field" type="number" min="1" max="60" value={displayedInstallmentCount} onChange={(e) => { setInstallmentCount(e.target.value); setInstallmentCountTouched(true); }} required /><p className="text-xs muted mt-1">{installmentCountTouched ? "Ajustada a mano." : "1 cuota por mes de duración del curso."}</p></label>
-        <label className="label">Valor de cada cuota ARS<input className="field" type="number" min="0" step="0.01" value={displayedInstallmentPrice} onChange={(e) => { setInstallmentPrice(e.target.value); setInstallmentPriceTouched(true); }} required /><p className="text-xs muted mt-1">{installmentPriceTouched ? "Ajustado a mano." : "Precio del curso dividido en cuotas."}</p></label>
+        <label className="label">Valor de cada cuota ARS<MoneyInput value={displayedInstallmentPrice} onChange={(v) => { setInstallmentPrice(v); setInstallmentPriceTouched(true); }} required /><p className="text-xs muted mt-1">{installmentPriceTouched ? "Ajustado a mano." : "Precio del curso dividido en cuotas."}</p></label>
         <label className="label">Comisión docente (%)<input className="field" type="number" min="0" max="100" step="1" value={commissionPercent} onChange={(e) => setCommissionPercent(e.target.value)} required /></label>
         <label className="label">Política de deuda<select className="field" value={debtPolicy} onChange={(e) => setDebtPolicy(e.target.value)}><option value="inform_only">Solo informar</option><option value="allow_with_warning">Permitir con advertencia</option><option value="block_if_overdue">Bloquear si está vencida</option><option value="block_if_no_confirmed_payment">Bloquear sin pago confirmado</option><option value="manual_review">Revisión manual</option></select></label>
       </div>
