@@ -10,6 +10,7 @@ import { NewEnrollmentModal } from "@/components/app/new-enrollment-modal";
 import { PayChargeModal } from "@/components/app/pay-charge-modal";
 import { NewPaymentModal } from "@/components/app/new-payment-modal";
 import { usePaginatedList } from "@/components/app/hooks/use-paginated-list";
+import { VencimientosTab } from "@/components/app/vencimientos-tab";
 import type { AcademyOption, ChargeRowDTO } from "@/lib/students/types";
 import type { EnrollmentRowDTO } from "@/lib/billing/types";
 
@@ -27,7 +28,7 @@ const statusFilters = [["all", "Todos los estados"], ["overdue", "Vencidos"], ["
 export function BillingConsole() {
   const [academies, setAcademies] = useState<AcademyOption[] | null>(null);
   const [academyId, setAcademyId] = useState("");
-  const [tab, setTab] = useState<"cargos" | "inscripciones">("cargos");
+  const [tab, setTab] = useState<"cargos" | "inscripciones" | "vencimientos">("cargos");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
@@ -41,7 +42,8 @@ export function BillingConsole() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams(window.location.search);
-      if (params.get("tab") === "inscripciones") setTab("inscripciones");
+      const requested = params.get("tab");
+      if (requested === "inscripciones" || requested === "vencimientos") setTab(requested);
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -146,7 +148,7 @@ export function BillingConsole() {
     {success && <p className="mb-4 rounded-xl bg-emerald-50 text-emerald-800 p-3 text-sm">{success}</p>}
 
     <div className="flex gap-2 mb-5 border-b border-[var(--line)]">
-      {(["cargos", "inscripciones"] as const).map((id) => <button key={id} onClick={() => setTab(id)} className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition-colors ${tab === id ? "border-[var(--brand)] text-[var(--brand)]" : "border-transparent muted hover:text-[#0b1220]"}`}>{id === "cargos" ? "Cargos" : "Inscripciones"}</button>)}
+      {([["cargos", "Cargos"], ["inscripciones", "Inscripciones"], ["vencimientos", "Vencimientos"]] as const).map(([id, label]) => <button key={id} onClick={() => setTab(id)} className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition-colors ${tab === id ? "border-[var(--brand)] text-[var(--brand)]" : "border-transparent muted hover:text-[#0b1220]"}`}>{label}</button>)}
     </div>
 
     {tab === "cargos" && <>
@@ -232,6 +234,8 @@ export function BillingConsole() {
         </section>}
       {enrollmentsList.hasMore && <div className="flex items-center justify-between mt-4"><p className="text-xs muted">Mostrando {enrollments?.length ?? 0}</p><button onClick={() => void enrollmentsList.loadMore()} disabled={enrollmentsList.loading} className="btn btn-secondary">{enrollmentsList.loading ? "Cargando…" : "Mostrar más"}</button></div>}
     </>}
+
+    {tab === "vencimientos" && <VencimientosTab academyId={academyId} />}
 
     {payCharge && <PayChargeModal studentId={payCharge.studentId} academyId={academyId} charge={payCharge} onClose={() => setPayCharge(null)} onPaid={() => { setPayCharge(null); setSuccess("Cobro registrado."); reloadCharges(); }} />}
     {newPaymentOpen && <NewPaymentModal academyId={academyId} onClose={() => setNewPaymentOpen(false)} onRegistered={() => { setSuccess("Pago registrado."); reloadCharges(); }} />}

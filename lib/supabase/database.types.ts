@@ -1202,6 +1202,74 @@ export type Database = {
           },
         ]
       }
+      cohort_schedule_days: {
+        Row: {
+          academy_id: string
+          branch_id: string
+          cohort_id: string
+          created_at: string
+          ends_at: string
+          id: string
+          starts_at: string
+          updated_at: string
+          weekday: number
+          workspace_id: string
+        }
+        Insert: {
+          academy_id: string
+          branch_id: string
+          cohort_id: string
+          created_at?: string
+          ends_at: string
+          id?: string
+          starts_at: string
+          updated_at?: string
+          weekday: number
+          workspace_id: string
+        }
+        Update: {
+          academy_id?: string
+          branch_id?: string
+          cohort_id?: string
+          created_at?: string
+          ends_at?: string
+          id?: string
+          starts_at?: string
+          updated_at?: string
+          weekday?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cohort_schedule_days_academy_id_fkey"
+            columns: ["academy_id"]
+            isOneToOne: false
+            referencedRelation: "academies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cohort_schedule_days_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cohort_schedule_days_cohort_id_fkey"
+            columns: ["cohort_id"]
+            isOneToOne: false
+            referencedRelation: "cohorts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cohort_schedule_days_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cohorts: {
         Row: {
           academy_id: string
@@ -1215,16 +1283,18 @@ export type Database = {
           created_by: string | null
           debt_policy: string
           due_day: number | null
-          ends_at: string
+          ends_at: string | null
           estimated_end_date: string
           id: string
+          idempotency_key: string | null
           installment_cents: number
           installment_count: number
           instructor_user_id: string | null
           name: string
           notes: string | null
+          request_hash: string | null
           start_date: string
-          starts_at: string
+          starts_at: string | null
           status: string
           updated_at: string
           weekday: number | null
@@ -1242,16 +1312,18 @@ export type Database = {
           created_by?: string | null
           debt_policy?: string
           due_day?: number | null
-          ends_at: string
+          ends_at?: string | null
           estimated_end_date: string
           id?: string
+          idempotency_key?: string | null
           installment_cents: number
           installment_count?: number
           instructor_user_id?: string | null
           name: string
           notes?: string | null
+          request_hash?: string | null
           start_date: string
-          starts_at: string
+          starts_at?: string | null
           status?: string
           updated_at?: string
           weekday?: number | null
@@ -1269,16 +1341,18 @@ export type Database = {
           created_by?: string | null
           debt_policy?: string
           due_day?: number | null
-          ends_at?: string
+          ends_at?: string | null
           estimated_end_date?: string
           id?: string
+          idempotency_key?: string | null
           installment_cents?: number
           installment_count?: number
           instructor_user_id?: string | null
           name?: string
           notes?: string | null
+          request_hash?: string | null
           start_date?: string
-          starts_at?: string
+          starts_at?: string | null
           status?: string
           updated_at?: string
           weekday?: number | null
@@ -3750,6 +3824,10 @@ export type Database = {
         }
         Returns: Json
       }
+      charges_vencimientos_summary: {
+        Args: { p_academy_id: string; p_workspace_id: string }
+        Returns: Json
+      }
       close_attendance: {
         Args: { p_class_session_id: string }
         Returns: undefined
@@ -3768,6 +3846,27 @@ export type Database = {
       }
       confirm_payment: {
         Args: { p_idempotency_key: string; p_payment_id: string }
+        Returns: Json
+      }
+      create_cohort_with_classes: {
+        Args: {
+          p_academy_id: string
+          p_branch_id: string
+          p_capacity: number
+          p_commission_bps: number
+          p_course_id: string
+          p_debt_policy: string
+          p_due_day: number
+          p_estimated_end_date: string
+          p_idempotency_key: string
+          p_installment_cents: number
+          p_installment_count: number
+          p_instructor_user_id: string
+          p_name: string
+          p_schedule_days: Json
+          p_start_date: string
+          p_workspace_id: string
+        }
         Returns: Json
       }
       create_enrollment_with_charges: {
@@ -3802,6 +3901,10 @@ export type Database = {
       }
       is_platform_superadmin: { Args: never; Returns: boolean }
       is_workspace_owner: { Args: { p_workspace_id: string }; Returns: boolean }
+      next_cohort_code: {
+        Args: { p_academy_id: string; p_workspace_id: string }
+        Returns: string
+      }
       open_cash_session: {
         Args: {
           p_academy_id: string

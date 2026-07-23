@@ -11,9 +11,25 @@ const querySchema = z.object({
   academyId: uuidSchema,
   status: z.enum(["all", "pending", "partial", "paid", "overdue", "cancelled", "waived", "under_review"]).default("all"),
   q: z.string().max(80).optional(),
+  dueBucket: z.enum(["overdue", "next7Days", "next2Weeks", "later"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25)
 });
+
+// Ventana rodante en huso horario de negocio (mismo criterio hardcodeado que perform_checkin: deuda
+// técnica heredada, no nueva). "Hoy" cae en next7Days, nunca en overdue.
+function businessToday(): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  return new Date(`${parts}T00:00:00Z`);
+}
+function addDays(date: Date, days: number): string { const d = new Date(date); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); }
+function dueBucketRange(bucket: "overdue" | "next7Days" | "next2Weeks" | "later"): { gte?: string; lt?: string } {
+  const today = businessToday();
+  if (bucket === "overdue") return { lt: addDays(today, 0) };
+  if (bucket === "next7Days") return { gte: addDays(today, 0), lt: addDays(today, 7) };
+  if (bucket === "next2Weeks") return { gte: addDays(today, 7), lt: addDays(today, 21) };
+  return { gte: addDays(today, 21) };
+}
 
 export async function GET(request: Request) {
   const user = await readSession();
@@ -31,7 +47,13 @@ export async function GET(request: Request) {
       .eq("workspace_id", user.workspaceId)
       .eq("academy_id", parsed.data.academyId);
     if (parsed.data.status !== "all") query = query.eq("status", parsed.data.status);
+    else if (parsed.data.dueBucket) query = query.not("status", "in", "(paid,cancelled,waived)");
     if (matchingStudentIds) query = query.in("student_id", matchingStudentIds);
+    if (parsed.data.dueBucket) {
+      const range = dueBucketRange(parsed.data.dueBucket);
+      if (range.gte) query = query.gte("due_date", range.gte);
+      if (range.lt) query = query.lt("due_date", range.lt);
+    }
 
     const from = (parsed.data.page - 1) * parsed.data.pageSize;
     const { data: pageRows, error } = await query.order("due_date").range(from, from + parsed.data.pageSize);
