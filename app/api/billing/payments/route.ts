@@ -26,9 +26,12 @@ export async function GET(request: Request) {
     const matchingStudentIds = await resolveMatchingStudentIds(supabase, user.workspaceId, parsed.data.academyId, parsed.data.q);
     if (matchingStudentIds?.length === 0) return NextResponse.json({ payments: [], hasMore: false });
 
-    // Anti-join: "sin asignar" = pagos sin fila en payment_allocations (left join + filtro por null).
+    // "Sin asignar" = pagos sin fila en payment_allocations. El anti-join vía PostgREST embedded
+    // filter (payment_allocations!left(...) + .is(...,null)) no filtra de verdad esta relación
+    // uno-a-muchos — devuelve todos los pagos. Se usa la vista payments_unassigned (SQL puro,
+    // security_invoker respeta RLS) en su lugar.
     let query = parsed.data.unassigned
-      ? supabase.from("payments").select("id,reference,amount_cents,method,status,registered_at,student_id,payment_allocations!left(payment_id)").is("payment_allocations.payment_id", null)
+      ? supabase.from("payments_unassigned").select("id,reference,amount_cents,method,status,registered_at,student_id")
       : supabase.from("payments").select("id,reference,amount_cents,method,status,registered_at,student_id");
     query = query.eq("workspace_id", user.workspaceId).eq("academy_id", parsed.data.academyId);
     if (parsed.data.status !== "all") query = query.eq("status", parsed.data.status);
@@ -40,24 +43,27 @@ export async function GET(request: Request) {
     const hasMore = (pageRows ?? []).length > parsed.data.pageSize;
     const paymentRows = (pageRows ?? []).slice(0, parsed.data.pageSize);
 
-    const studentIds = Array.from(new Set((paymentRows ?? []).map((row) => row.student_id)));
+    // payments_unassigned es una vista, así que PostgREST tipa sus columnas como nullable aunque en
+    // la tabla real sean NOT NULL (no puede saber que este select nunca produce null acá) — se
+    // filtran/coalescean explícitamente en vez de confiar en el tipo generado.
+    const studentIds = Array.from(new Set((paymentRows ?? []).map((row) => row.student_id).filter((id): id is string => Boolean(id))));
     const { data: studentRows } = studentIds.length
       ? await supabase.from("students").select("id, first_name, last_name, public_code").in("id", studentIds)
       : { data: [] as { id: string; first_name: string; last_name: string; public_code: string }[] };
     const studentById = new Map((studentRows ?? []).map((row) => [row.id, row]));
 
-    const paymentIds = (paymentRows ?? []).map((row) => row.id);
+    const paymentIds = (paymentRows ?? []).map((row) => row.id).filter((id): id is string => Boolean(id));
     const { data: allocationRows } = paymentIds.length
       ? await supabase.from("payment_allocations").select("payment_id, charge_id").in("payment_id", paymentIds)
       : { data: [] as { payment_id: string; charge_id: string }[] };
     const allocatedChargeByPayment = new Map((allocationRows ?? []).map((row) => [row.payment_id, row.charge_id]));
 
     const payments: (PaymentRowDTO & { studentId: string; studentName: string; studentCode: string; allocatedChargeId: string | null })[] = (paymentRows ?? []).map((row) => {
-      const student = studentById.get(row.student_id);
+      const student = row.student_id ? studentById.get(row.student_id) : undefined;
       return {
-        id: row.id, reference: row.reference, amountCents: row.amount_cents, method: row.method, status: row.status, registeredAt: row.registered_at,
-        studentId: row.student_id, studentName: student ? `${student.last_name}, ${student.first_name}` : "", studentCode: student?.public_code ?? "",
-        allocatedChargeId: allocatedChargeByPayment.get(row.id) ?? null
+        id: row.id ?? "", reference: row.reference, amountCents: row.amount_cents ?? 0, method: row.method ?? "", status: row.status ?? "", registeredAt: row.registered_at ?? "",
+        studentId: row.student_id ?? "", studentName: student ? `${student.last_name}, ${student.first_name}` : "", studentCode: student?.public_code ?? "",
+        allocatedChargeId: row.id ? (allocatedChargeByPayment.get(row.id) ?? null) : null
       };
     });
     return NextResponse.json({ payments, hasMore });

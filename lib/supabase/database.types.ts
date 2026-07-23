@@ -740,6 +740,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "cash_movements_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_unassigned"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "cash_movements_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -2518,6 +2525,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "payment_allocations_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_unassigned"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "payment_allocations_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -2579,6 +2593,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "payment_receipts_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments_unassigned"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "payment_receipts_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -2621,6 +2642,13 @@ export type Database = {
             columns: ["payment_id"]
             isOneToOne: true
             referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_reversals_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: true
+            referencedRelation: "payments_unassigned"
             referencedColumns: ["id"]
           },
           {
@@ -3788,7 +3816,124 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      payments_unassigned: {
+        Row: {
+          academy_id: string | null
+          amount_cents: number | null
+          branch_id: string | null
+          cash_session_id: string | null
+          confirmed_at: string | null
+          created_at: string | null
+          currency: string | null
+          effective_at: string | null
+          id: string | null
+          idempotency_key: string | null
+          method: string | null
+          notes: string | null
+          proof_object_key: string | null
+          received_by: string | null
+          receiving_account: string | null
+          reference: string | null
+          registered_at: string | null
+          reversed_at: string | null
+          status: string | null
+          student_id: string | null
+          updated_at: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          academy_id?: string | null
+          amount_cents?: number | null
+          branch_id?: string | null
+          cash_session_id?: string | null
+          confirmed_at?: string | null
+          created_at?: string | null
+          currency?: string | null
+          effective_at?: string | null
+          id?: string | null
+          idempotency_key?: string | null
+          method?: string | null
+          notes?: string | null
+          proof_object_key?: string | null
+          received_by?: string | null
+          receiving_account?: string | null
+          reference?: string | null
+          registered_at?: string | null
+          reversed_at?: string | null
+          status?: string | null
+          student_id?: string | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          academy_id?: string | null
+          amount_cents?: number | null
+          branch_id?: string | null
+          cash_session_id?: string | null
+          confirmed_at?: string | null
+          created_at?: string | null
+          currency?: string | null
+          effective_at?: string | null
+          id?: string | null
+          idempotency_key?: string | null
+          method?: string | null
+          notes?: string | null
+          proof_object_key?: string | null
+          received_by?: string | null
+          receiving_account?: string | null
+          reference?: string | null
+          registered_at?: string | null
+          reversed_at?: string | null
+          status?: string | null
+          student_id?: string | null
+          updated_at?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_academy_id_fkey"
+            columns: ["academy_id"]
+            isOneToOne: false
+            referencedRelation: "academies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_cash_session_id_fkey"
+            columns: ["cash_session_id"]
+            isOneToOne: false
+            referencedRelation: "cash_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_received_by_fkey"
+            columns: ["received_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       calculate_commission_estimate: {

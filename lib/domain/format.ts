@@ -8,3 +8,5 @@ export function formatTime(value: string | Date) { const p=parts(value);return `
 export function formatDateTime(value: string | Date) { return `${formatDate(value)} · ${formatTime(value)}`; }
 export function formatShortDate(value: string | Date) { const p=parts(value);return `${p.weekday} ${p.day}/${p.month}`; }
 export function pluralize(count: number, singular: string, plural = `${singular}s`) { return `${count} ${count === 1 ? singular : plural}`; }
+// "Hoy" en huso horario de negocio, no en el del navegador ni el del servidor.
+export function businessToday(): string { return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()); }

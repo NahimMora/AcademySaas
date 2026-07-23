@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/app/ui";
+import { businessToday } from "@/lib/domain/format";
 import type { AcademyOption } from "@/lib/students/types";
 import type { CourseOption } from "@/lib/billing/types";
 
@@ -16,10 +17,6 @@ async function readError(response: Response, fallback: string) {
   return typeof body?.error === "string" ? body.error : fallback;
 }
 
-// "Hoy" en huso horario de negocio, no en el del navegador (mismo criterio que el resto de la app).
-function businessToday(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-}
 function addDays(dateStr: string, days: number): string {
   const date = new Date(`${dateStr}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -42,8 +39,10 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
   const [estimatedEndDate, setEstimatedEndDate] = useState("");
   const [endDateTouched, setEndDateTouched] = useState(false);
   const [capacity, setCapacity] = useState("20");
-  const [installmentCount, setInstallmentCount] = useState("6");
+  const [installmentCount, setInstallmentCount] = useState("");
+  const [installmentCountTouched, setInstallmentCountTouched] = useState(false);
   const [installmentPrice, setInstallmentPrice] = useState("");
+  const [installmentPriceTouched, setInstallmentPriceTouched] = useState(false);
   const [dueDay, setDueDay] = useState("10");
   const [commissionPercent, setCommissionPercent] = useState("40");
   const [debtPolicy, setDebtPolicy] = useState("allow_with_warning");
@@ -91,11 +90,18 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
   }
 
   const selectedCourse = courses.find((course) => course.id === courseId);
-  const installmentsNum = Math.max(1, Math.round(Number(installmentCount)) || 1);
 
-  // Se calcula sola a partir de la fecha de inicio y la duración del curso elegido, salvo que la
-  // persona ya la haya tocado a mano (ahí dejamos de pisarle el valor). Se deriva en el render en
-  // vez de en un efecto: es puro estado derivado, no una sincronización con algo externo.
+  // Cuotas, precio de cuota y fecha de fin se calculan solas a partir del curso elegido (1 cuota
+  // por mes de duración, precio = precio sugerido del curso / cantidad de cuotas), salvo que la
+  // persona ya haya tocado ese campo a mano. Todo derivado en el render, no en un efecto: es
+  // estado puramente derivado, no una sincronización con algo externo.
+  const computedInstallmentCount = selectedCourse?.estimatedDurationWeeks ? Math.max(1, Math.round(selectedCourse.estimatedDurationWeeks / 4.345)) : null;
+  const displayedInstallmentCount = installmentCountTouched || !computedInstallmentCount ? installmentCount : String(computedInstallmentCount);
+  const installmentsNum = Math.max(1, Math.round(Number(displayedInstallmentCount)) || 1);
+
+  const computedInstallmentPriceCents = selectedCourse?.suggestedPriceCents ? Math.round(selectedCourse.suggestedPriceCents / installmentsNum) : null;
+  const displayedInstallmentPrice = installmentPriceTouched || !computedInstallmentPriceCents ? installmentPrice : (computedInstallmentPriceCents / 100).toFixed(2);
+
   const computedEndDate = startDate && selectedCourse?.estimatedDurationWeeks ? addDays(startDate, selectedCourse.estimatedDurationWeeks * 7) : "";
   const displayedEndDate = endDateTouched ? estimatedEndDate : computedEndDate;
 
@@ -111,7 +117,7 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
         body: JSON.stringify({
           academyId, branchId, courseId, name, instructorUserId: instructorUserId || null,
           startDate, estimatedEndDate: displayedEndDate, capacity: Number(capacity), installmentCount: installmentsNum,
-          installmentCents: Math.round(Number(installmentPrice || "0") * 100), dueDay: Number(dueDay),
+          installmentCents: Math.round(Number(displayedInstallmentPrice || "0") * 100), dueDay: Number(dueDay),
           commissionBps: Math.round(Math.max(0, Math.min(100, Number(commissionPercent))) * 100), debtPolicy,
           scheduleDays: scheduleDays.map((day) => ({ weekday: day.weekday, startsAt: day.startsAt, endsAt: day.endsAt })),
           idempotencyKey
@@ -163,8 +169,8 @@ export function NewCohortModal({ onClose, onCreated, defaultCourseId, academyId:
         <h4 className="sm:col-span-2 text-xs font-bold uppercase muted tracking-wide">Cupo, plan de pago y comisión</h4>
         <label className="label">Cupo máximo<input className="field" type="number" min="1" max="500" value={capacity} onChange={(e) => setCapacity(e.target.value)} required /></label>
         <label className="label">Día de vencimiento (1-28)<input className="field" type="number" min="1" max="28" value={dueDay} onChange={(e) => setDueDay(e.target.value)} required /></label>
-        <label className="label">Cantidad de cuotas<input className="field" type="number" min="1" max="60" value={installmentCount} onChange={(e) => setInstallmentCount(e.target.value)} required /></label>
-        <label className="label">Valor de cada cuota ARS<input className="field" type="number" min="0" step="0.01" value={installmentPrice} onChange={(e) => setInstallmentPrice(e.target.value)} required /></label>
+        <label className="label">Cantidad de cuotas<input className="field" type="number" min="1" max="60" value={displayedInstallmentCount} onChange={(e) => { setInstallmentCount(e.target.value); setInstallmentCountTouched(true); }} required /><p className="text-xs muted mt-1">{installmentCountTouched ? "Ajustada a mano." : "1 cuota por mes de duración del curso."}</p></label>
+        <label className="label">Valor de cada cuota ARS<input className="field" type="number" min="0" step="0.01" value={displayedInstallmentPrice} onChange={(e) => { setInstallmentPrice(e.target.value); setInstallmentPriceTouched(true); }} required /><p className="text-xs muted mt-1">{installmentPriceTouched ? "Ajustado a mano." : "Precio del curso dividido en cuotas."}</p></label>
         <label className="label">Comisión docente (%)<input className="field" type="number" min="0" max="100" step="1" value={commissionPercent} onChange={(e) => setCommissionPercent(e.target.value)} required /></label>
         <label className="label">Política de deuda<select className="field" value={debtPolicy} onChange={(e) => setDebtPolicy(e.target.value)}><option value="inform_only">Solo informar</option><option value="allow_with_warning">Permitir con advertencia</option><option value="block_if_overdue">Bloquear si está vencida</option><option value="block_if_no_confirmed_payment">Bloquear sin pago confirmado</option><option value="manual_review">Revisión manual</option></select></label>
       </div>

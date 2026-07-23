@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatShortDate } from "@/lib/domain/format";
+import { businessToday, formatShortDate } from "@/lib/domain/format";
 import { Empty, PageHeader, StatusBadge } from "@/components/app/ui";
 import { AttendanceModal } from "@/components/app/attendance-modal";
 import { usePaginatedList } from "@/components/app/hooks/use-paginated-list";
@@ -15,6 +15,9 @@ async function readError(response: Response, fallback: string) {
   return typeof body?.error === "string" ? body.error : fallback;
 }
 
+const timeFilters = [["upcoming", "Próximas"], ["past", "Pasadas"], ["all", "Todas"]] as const;
+type TimeFilter = (typeof timeFilters)[number][0];
+
 export function ClassesConsole({ instructor = false }: { instructor?: boolean }) {
   const user = useSessionUser();
   const readOnly = !instructor && user.role === "owner";
@@ -22,6 +25,7 @@ export function ClassesConsole({ instructor = false }: { instructor?: boolean })
   const [academyId, setAcademyId] = useState("");
   const [cohortOptions, setCohortOptions] = useState<CohortOption[]>([]);
   const [cohortFilter, setCohortFilter] = useState("all");
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("upcoming");
   const [error, setError] = useState("");
   const [attendanceClassId, setAttendanceClassId] = useState<string | null>(null);
 
@@ -47,10 +51,16 @@ export function ClassesConsole({ instructor = false }: { instructor?: boolean })
     })();
   }, [academyId]);
 
-  const fetchClassesPage = useCallback(async (params: { academyId?: string; cohortId: string }, page: number, pageSize: number) => {
+  const fetchClassesPage = useCallback(async (params: { academyId?: string; cohortId: string; timeFilter: TimeFilter }, page: number, pageSize: number) => {
     const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (params.academyId) query.set("academyId", params.academyId);
     if (params.cohortId !== "all") query.set("cohortId", params.cohortId);
+    const today = businessToday();
+    if (params.timeFilter === "upcoming") { query.set("dateFrom", today); query.set("sort", "asc"); }
+    else if (params.timeFilter === "past") {
+      const yesterday = new Date(`${today}T00:00:00Z`); yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      query.set("dateTo", yesterday.toISOString().slice(0, 10)); query.set("sort", "desc");
+    }
     const response = await fetch(`/api/classes?${query.toString()}`);
     if (!response.ok) { setError(await readError(response, "No se pudieron cargar las clases")); return { items: [], hasMore: false }; }
     const data = await response.json() as { classes: ClassListItemDTO[]; hasMore: boolean };
@@ -58,7 +68,7 @@ export function ClassesConsole({ instructor = false }: { instructor?: boolean })
   }, []);
 
   const { items: classes, hasMore, loading, loadMore } = usePaginatedList({
-    params: instructor ? { cohortId: "all" } : (academyId ? { academyId, cohortId: cohortFilter } : null),
+    params: instructor ? { cohortId: "all", timeFilter } : (academyId ? { academyId, cohortId: cohortFilter, timeFilter } : null),
     fetchPage: fetchClassesPage
   });
 
@@ -71,7 +81,10 @@ export function ClassesConsole({ instructor = false }: { instructor?: boolean })
       action={!instructor && academies && academies.length > 1 && <select className="field" value={academyId} onChange={(e) => setAcademyId(e.target.value)}>{academies.map((academy) => <option key={academy.id} value={academy.id}>{academy.name}</option>)}</select>}
     />
     {error && <p className="mb-4 rounded-xl bg-red-50 text-red-800 p-3 text-sm">{error}</p>}
-    {!instructor && <label className="label max-w-sm mb-4">Filtrar por comisión<select className="field" value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)}><option value="all">Todas las comisiones</option>{cohortOptions.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name} · {cohort.code}</option>)}</select></label>}
+    <div className="flex flex-col sm:flex-row gap-2 mb-4 sm:items-end">
+      {!instructor && <label className="label max-w-sm flex-1">Filtrar por comisión<select className="field" value={cohortFilter} onChange={(e) => setCohortFilter(e.target.value)}><option value="all">Todas las comisiones</option>{cohortOptions.map((cohort) => <option key={cohort.id} value={cohort.id}>{cohort.name} · {cohort.code}</option>)}</select></label>}
+      <div className="flex gap-2">{timeFilters.map(([value, label]) => <button key={value} onClick={() => setTimeFilter(value)} className={`btn ${timeFilter === value ? "btn-primary" : "btn-secondary"}`}>{label}</button>)}</div>
+    </div>
 
     {classes === null
       ? <p className="muted text-sm">Cargando clases…</p>

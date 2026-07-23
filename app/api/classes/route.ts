@@ -11,6 +11,7 @@ const querySchema = z.object({
   dateFrom: z.iso.date().optional(),
   dateTo: z.iso.date().optional(),
   status: z.enum(["all", "scheduled", "open", "completed", "cancelled", "rescheduled", "extra"]).default("all"),
+  sort: z.enum(["asc", "desc"]).default("desc"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25)
 });
@@ -42,7 +43,8 @@ export async function GET(request: Request) {
     }
 
     const from = (parsed.data.page - 1) * parsed.data.pageSize;
-    const { data: pageRows, error } = await query.order("session_date", { ascending: false }).order("starts_at", { ascending: false }).range(from, from + parsed.data.pageSize);
+    const ascending = parsed.data.sort === "asc";
+    const { data: pageRows, error } = await query.order("session_date", { ascending }).order("starts_at", { ascending }).range(from, from + parsed.data.pageSize);
     if (error) return NextResponse.json({ error: "No se pudieron cargar las clases" }, { status: 500 });
     const hasMore = (pageRows ?? []).length > parsed.data.pageSize;
     const classRows = (pageRows ?? []).slice(0, parsed.data.pageSize);
