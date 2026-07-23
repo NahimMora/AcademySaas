@@ -5,6 +5,7 @@ import { readSession } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { uuidSchema } from "@/lib/validation";
 import { log } from "@/lib/observability/logger";
+import { normalizeSearchText } from "@/lib/students/search";
 import type { StudentListItemDTO } from "@/lib/students/types";
 
 const listQuerySchema = z.object({
@@ -64,7 +65,8 @@ export async function GET(request: Request) {
     if (parsed.data.status !== "all") query = query.eq("status", parsed.data.status);
     if (parsed.data.q) {
       const term = parsed.data.q.replace(/[%,]/g, "").trim();
-      if (term) query = query.or(`first_name.ilike.%${term}%,last_name.ilike.%${term}%,dni_normalized.ilike.%${term}%,public_code.ilike.%${term}%`);
+      const normalized = normalizeSearchText(term);
+      if (term) query = query.or(`first_name_search.ilike.%${normalized}%,last_name_search.ilike.%${normalized}%,dni_normalized.ilike.%${term}%,public_code.ilike.%${term}%`);
     }
     const from = (parsed.data.page - 1) * parsed.data.pageSize;
     const { data: pageRows, error } = await query.order("last_name").range(from, from + parsed.data.pageSize);

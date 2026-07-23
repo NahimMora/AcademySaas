@@ -3283,9 +3283,11 @@ export type Database = {
           emergency_contact: string | null
           emergency_phone: string | null
           first_name: string
+          first_name_search: string | null
           id: string
           internal_notes: string | null
           last_name: string
+          last_name_search: string | null
           phone: string
           photo_object_key: string | null
           province: string | null
@@ -3311,9 +3313,11 @@ export type Database = {
           emergency_contact?: string | null
           emergency_phone?: string | null
           first_name: string
+          first_name_search?: string | null
           id?: string
           internal_notes?: string | null
           last_name: string
+          last_name_search?: string | null
           phone: string
           photo_object_key?: string | null
           province?: string | null
@@ -3339,9 +3343,11 @@ export type Database = {
           emergency_contact?: string | null
           emergency_phone?: string | null
           first_name?: string
+          first_name_search?: string | null
           id?: string
           internal_notes?: string | null
           last_name?: string
+          last_name_search?: string | null
           phone?: string
           photo_object_key?: string | null
           province?: string | null
@@ -4050,6 +4056,7 @@ export type Database = {
         Args: { p_academy_id: string; p_workspace_id: string }
         Returns: string
       }
+      normalize_search_text: { Args: { txt: string }; Returns: string }
       open_cash_session: {
         Args: {
           p_academy_id: string
